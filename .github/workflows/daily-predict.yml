@@ -1,0 +1,28 @@
+name: Daily SP500 Prediction
+
+on:
+  schedule:
+    - cron: '0 7 * * *'  # 07:00 UTC = 08:00 UK time 
+  workflow_dispatch:    
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch yfinance scikit-learn discord-webhook python-dotenv
+
+      - name: Run prediction
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python daily_predict.py
