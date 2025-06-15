@@ -27,6 +27,7 @@ df = df.drop(columns=['Price'], errors='ignore')
 df = compute_technical_indicators(df)
 
 df['Return'] = df['Close'].pct_change()
+df['Target'] = (df['Close'].shift(-3) > df['Close']).astype(int)
 df = df.dropna()
 
 FEATURE_COLUMNS = ['Close', 'High', 'Low', 'Open', 'Volume', 'Return', 'RSI', 'MACD'] 
@@ -44,6 +45,8 @@ x = np.array(x)
 y = np.array(y)
 
 print(f'Sequences created: {x.shape}, Labels: {y.shape}')
+unique, counts = np.unique(y, return_counts=True)
+print("Label distribution:", dict(zip(unique, counts)))
 
 # split data
 X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.2, shuffle=False)
