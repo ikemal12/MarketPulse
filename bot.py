@@ -41,6 +41,46 @@ def get_latest_prediction(ticker: str):
         pred = torch.argmax(probs).item()
         return ("📈 Up" if pred else "📉 Down", probs[pred].item() * 100, None)
     
+def get_model_stats(ticker: str):
+    from os.path import exists
+    dataset_path = f'datasets/{ticker}.pt'
+    model_path = f'models/{ticker}.pth'
+    if not exists(dataset_path) or not exists(model_path):
+        return None, f"No model/dataset found for {ticker}"
+
+    X_train, y_train, X_test, y_test = torch.load(dataset_path)
+    model = SP500LSTM(X_test.shape[2], 64, 2, 2)
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+
+    with torch.no_grad():
+        outputs = model(X_test)
+        probs = F.softmax(outputs, dim=1)
+        preds = torch.argmax(probs, dim=1)
+
+        correct = (preds == y_test).sum().item()
+        total = y_test.size(0)
+        accuracy = correct / total
+
+        num_up = (preds == 1).sum().item()
+        num_down = (preds == 0).sum().item()
+
+        pred_confidences = probs.max(dim=1).values
+        avg_conf = pred_confidences.mean().item()
+        min_conf = pred_confidences.min().item()
+        max_conf = pred_confidences.max().item()
+
+    return {
+        'accuracy': accuracy,
+        'samples': total,
+        'up': num_up,
+        'down': num_down,
+        'avg_conf': avg_conf,
+        'min_conf': min_conf,
+        'max_conf': max_conf
+    }, None
+
+    
 def fetch_news(ticker: str, api_key: str, limit: int = 5):
     newsapi = NewsApiClient(api_key=api_key)
     result = newsapi.get_everything(q=ticker, language='en', sort_by='publishedAt', page_size=limit)
@@ -87,5 +127,24 @@ async def news(interaction: discord.Interaction, ticker: str):
         return
 
     await interaction.response.send_message(f"**Latest News for {ticker.upper()}:**\n" + "\n".join(articles))
+
+@client.tree.command(name="stats", description="Get model accuracy for a ticker", guild=discord.Object(id=int(GUILD_ID)))
+@app_commands.describe(ticker="Ticker like AAPL, SPY")
+async def stats(interaction: discord.Interaction, ticker: str):
+    ticker = ticker.upper()
+    stats_data, error = get_model_stats(ticker)
+    if error:
+        await interaction.response.send_message(f"⚠️ {error}", ephemeral=True)
+        return
+
+    await interaction.response.send_message(
+        f"**{ticker} Model Stats**\n"
+        f"📊 Test Samples: {stats_data['samples']}\n"
+        f"✅ Accuracy: {stats_data['accuracy']:.2%}\n"
+        f"📈 Predicted Up: {stats_data['up']}, 📉 Down: {stats_data['down']}\n"
+        f"🎯 Confidence (avg/min/max): "
+        f"{stats_data['avg_conf']*100:.2f}% / {stats_data['min_conf']*100:.2f}% / {stats_data['max_conf']*100:.2f}%"
+    )
+
 
 client.run(TOKEN)
