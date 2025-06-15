@@ -16,6 +16,12 @@ print(df.columns.tolist())
 scaler = StandardScaler()
 features = scaler.fit_transform(df[FEATURE_COLUMNS])
 
+scaler_params = {
+    'mean': scaler.mean_,
+    'scale': scaler.scale_
+}
+np.save('scaler.npy', scaler_params)
+
 x = []
 y = []
 

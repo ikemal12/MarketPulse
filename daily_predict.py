@@ -46,7 +46,7 @@ def send_discord_message(direction, confidence):
         return
     webhook = Webhook.from_url(DISCORD_WEBHOOK_URL, adapter=RequestsWebhookAdapter())
     emoji = "📈" if direction == "Up" else "📉"
-    message = f'Daily S&P 500 Signal\nDirection: {emoji} {'Up' if direction == 1 else 'Down'}\nConfidence: {confidence*100:.2f}%'
+    message = f'Daily S&P 500 Signal\nDirection: {emoji} {"Up" if direction == 1 else "Down"}\nConfidence: {confidence*100:.2f}%'
     webhook.send(message)
 
 def main():
