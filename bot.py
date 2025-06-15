@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from newsapi import NewsApiClient
 from scripts.model import SP500LSTM
 from datetime import datetime, timezone
+import matplotlib.pyplot as plt
+import tempfile
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -80,7 +82,36 @@ def get_model_stats(ticker: str):
         'max_conf': max_conf
     }, None
 
-    
+def generate_prediction_plot(ticker: str):
+    from os.path import exists
+    dataset_path = f'datasets/{ticker}.pt'
+    model_path = f'models/{ticker}.pth'
+    if not exists(dataset_path) or not exists(model_path):
+        return None, "No model/dataset found for this ticker"
+
+    X_train, y_train, X_test, y_test = torch.load(dataset_path)
+    model = SP500LSTM(X_test.shape[2], 64, 2, 2)
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+
+    with torch.no_grad():
+        outputs = model(X_test)
+        preds = torch.argmax(torch.softmax(outputs, dim=1), dim=1)
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(y_test.numpy(), label='True', alpha=0.7)
+    plt.plot(preds.numpy(), label='Predicted', alpha=0.7)
+    plt.legend()
+    plt.title(f"{ticker.upper()} - Predictions vs True Labels")
+    plt.xlabel("Time Step")
+    plt.ylabel("Class")
+
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+    plt.savefig(tmp_file.name, bbox_inches='tight')
+    plt.close()
+    return tmp_file.name, None    
+
+
 def fetch_news(ticker: str, api_key: str, limit: int = 5):
     newsapi = NewsApiClient(api_key=api_key)
     result = newsapi.get_everything(q=ticker, language='en', sort_by='publishedAt', page_size=limit)
@@ -145,6 +176,19 @@ async def stats(interaction: discord.Interaction, ticker: str):
         f"🎯 Confidence (avg/min/max): "
         f"{stats_data['avg_conf']*100:.2f}% / {stats_data['min_conf']*100:.2f}% / {stats_data['max_conf']*100:.2f}%"
     )
+
+@client.tree.command(name="plot", description="Visualise predictions vs. actual values", guild=discord.Object(id=int(GUILD_ID)))
+@app_commands.describe(ticker="Ticker like AAPL, SPY")
+async def plot(interaction: discord.Interaction, ticker: str):
+    await interaction.response.defer() 
+    ticker = ticker.upper()
+    plot_path, error = generate_prediction_plot(ticker)
+    if error:
+        await interaction.followup.send(f"⚠️ {error}")
+        return
+
+    file = discord.File(plot_path, filename=f"{ticker}_plot.png")
+    await interaction.followup.send(content=f"📊 Prediction vs Actual for {ticker}:", file=file)
 
 
 client.run(TOKEN)
