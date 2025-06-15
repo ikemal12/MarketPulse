@@ -1,7 +1,7 @@
 import discord
 import torch
 import torch.nn.functional as F
-from model import SP500LSTM
+from scripts.model import SP500LSTM
 from dotenv import load_dotenv
 import os
 

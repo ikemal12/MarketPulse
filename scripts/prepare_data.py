@@ -21,13 +21,13 @@ def compute_technical_indicators(df):
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
     ema26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = ema12 - ema26
-
     return df
 
 def prepare_dataset(ticker):
     print(f"Preparing data for: {ticker}")
     os.makedirs('datasets', exist_ok=True)
     os.makedirs('scalers', exist_ok=True)
+    os.makedirs('models', exist_ok=True) 
 
     df = yf.download(ticker, period='5y', interval='1d')
     df = df.dropna()
@@ -40,7 +40,9 @@ def prepare_dataset(ticker):
     scaler = StandardScaler()
     features = scaler.fit_transform(df[FEATURE_COLUMNS])
     scaler_params = {'mean': scaler.mean_, 'scale': scaler.scale_}
-    np.save(f'scalers/scaler_{ticker}.npy', scaler_params)
+    scaler_path = f'scalers/{ticker}.npy'
+    np.save(scaler_path, scaler_params)
+    print(f'Scaler saved to {scaler_path}')
 
     x, y = [], []
     for i in range(SEQUENCE_LENGTH, len(features)):
@@ -60,8 +62,9 @@ def prepare_dataset(ticker):
     X_test = torch.tensor(X_test, dtype=torch.float32)
     y_test = torch.tensor(y_test, dtype=torch.long)
 
-    torch.save((X_train, y_train, X_test, y_test), f'datasets/dataset_{ticker}.pt')
-    print(f'Dataset saved to datasets/dataset_{ticker}.pt')
+    dataset_path = f'datasets/{ticker}.pt'
+    torch.save((X_train, y_train, X_test, y_test), dataset_path)
+    print(f'Dataset saved to {dataset_path}')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
