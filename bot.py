@@ -2,10 +2,12 @@ import os
 import torch
 import torch.nn.functional as F
 import discord
+import humanize
 from discord import app_commands
 from dotenv import load_dotenv
 from newsapi import NewsApiClient
 from scripts.model import SP500LSTM
+from datetime import datetime, timezone
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -38,6 +40,28 @@ def get_latest_prediction(ticker: str):
         probs = F.softmax(output, dim=1).squeeze()
         pred = torch.argmax(probs).item()
         return ("📈 Up" if pred else "📉 Down", probs[pred].item() * 100, None)
+    
+def fetch_news(ticker: str, api_key: str, limit: int = 5):
+    newsapi = NewsApiClient(api_key=api_key)
+    result = newsapi.get_everything(q=ticker, language='en', sort_by='publishedAt', page_size=limit)
+    articles = result.get('articles', [])
+    results = []
+
+    for art in articles:
+        title = art.get('title')
+        url = art.get('url')
+        published = art.get('publishedAt')
+
+        try:
+            published_dt = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            time_ago = humanize.naturaltime(datetime.now(timezone.utc) - published_dt)
+        except:
+            time_ago = "unknown time"
+
+        if title and url:
+            results.append(f"• [{title}]({url}) — *{time_ago}*")
+    return results
+
 
 @client.tree.command(name="predict", description="Get the latest signal", guild=discord.Object(id=int(GUILD_ID)))
 @app_commands.describe(ticker="Ticker like AAPL, SPY")
@@ -56,19 +80,12 @@ async def news(interaction: discord.Interaction, ticker: str):
     if not NEWSAPI_KEY:
         await interaction.response.send_message("⚠️ News API key not set in .env", ephemeral=True)
         return
-    newsapi = NewsApiClient(api_key=NEWSAPI_KEY)
-    result = newsapi.get_everything(q=ticker, language='en', sort_by='publishedAt', page_size=5)
-    articles = result.get('articles', [])
+
+    articles = fetch_news(ticker, NEWSAPI_KEY)
     if not articles:
         await interaction.response.send_message(f"No news found for {ticker.upper()}", ephemeral=True)
         return
 
-    msg = [f"**Latest News for {ticker.upper()}:**"]
-    for art in articles:
-        title = art.get('title')
-        url = art.get('url')
-        if title and url:
-            msg.append(f"• [{title}]({url})")
-    await interaction.response.send_message("\n".join(msg))
+    await interaction.response.send_message(f"**Latest News for {ticker.upper()}:**\n" + "\n".join(articles))
 
 client.run(TOKEN)
