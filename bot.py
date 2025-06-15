@@ -8,27 +8,38 @@ from scripts.model import SP500LSTM
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-GUILD_ID = os.getenv('DISCORD_GUILD_ID') 
-TICKER = 'SPY'
+GUILD_ID = os.getenv('DISCORD_GUILD_ID')
 
-DATASET_PATH = os.path.join('datasets', f'{TICKER}.pt')
-MODEL_PATH = os.path.join('models', f'{TICKER}.pth')
+HIDDEN_SIZE = 64
+NUM_LAYERS = 2
+OUTPUT_SIZE = 2
 
-X_train, y_train, X_test, y_test = torch.load(DATASET_PATH)
-INPUT_SIZE = X_test.shape[2]
-model = SP500LSTM(INPUT_SIZE, hidden_size=64, num_layers=2, output_size=2)
-model.load_state_dict(torch.load(MODEL_PATH))
-model.eval()
+def get_latest_prediction(ticker: str):
+    dataset_path = os.path.join('datasets', f'{ticker}.pt')
+    model_path = os.path.join('models', f'{ticker}.pth')
 
-def get_latest_prediction():
-    with torch.no_grad():
-        latest_input = X_test[-1].unsqueeze(0)
-        output = model(latest_input)
-        probs = F.softmax(output, dim=1).squeeze()
-        prediction = torch.argmax(probs).item()
-        direction = '📈 Up' if prediction == 1 else '📉 Down
-        confidence = probs[prediction].item() * 100
-    return direction, confidence
+    if not os.path.exists(dataset_path) or not os.path.exists(model_path):
+        return None, None, f"No model or dataset found for ticker '{ticker}'."
+
+    try:
+        X_train, y_train, X_test, y_test = torch.load(dataset_path)
+        input_size = X_test.shape[2]
+
+        model = SP500LSTM(input_size, HIDDEN_SIZE, NUM_LAYERS, OUTPUT_SIZE)
+        model.load_state_dict(torch.load(model_path))
+        model.eval()
+
+        with torch.no_grad():
+            latest_input = X_test[-1].unsqueeze(0)
+            output = model(latest_input)
+            probs = F.softmax(output, dim=1).squeeze()
+            prediction = torch.argmax(probs).item()
+            direction = "📈 Up" if prediction == 1 else "📉 Down"
+            confidence = probs[prediction].item() * 100
+        return direction, confidence, None
+    except Exception as e:
+        return None, None, f"Error running prediction for {ticker}: {e}"
+
 
 class SignalBot(discord.Client):
     def __init__(self):
@@ -43,11 +54,21 @@ class SignalBot(discord.Client):
 
 client = SignalBot()
 
-@client.tree.command(name='predict', description='Get the latest market signal prediction', guild=discord.Object(id=int(GUILD_ID)))
-async def predict_command(interaction: discord.Interaction):
-    direction, confidence = get_latest_prediction()
-    await interaction.response.send_message(
-        f'**Latest {TICKER} Signal**\nDirection: {direction}\nConfidence: {confidence:.2f}%'
-    )
+@client.tree.command(
+    name="predict",
+    description="Get the latest market signal prediction",
+    guild=discord.Object(id=int(GUILD_ID))
+)
+@app_commands.describe(ticker="Stock ticker symbol (e.g. SPY, AAPL)")
+async def predict_command(interaction: discord.Interaction, ticker: str):
+    ticker = ticker.upper()
+    direction, confidence, error = get_latest_prediction(ticker)
+
+    if error:
+        await interaction.response.send_message(f"⚠️ {error}", ephemeral=True)
+    else:
+        await interaction.response.send_message(
+            f'**Latest {ticker} Signal**\nDirection: {direction}\nConfidence: {confidence:.2f}%'
+        )
 
 client.run(TOKEN)
