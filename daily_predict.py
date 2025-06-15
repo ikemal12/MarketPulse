@@ -1,16 +1,31 @@
 import os
 import torch
+import torch.nn as nn
 import yfinance as yf
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from discord import Webhook, RequestsWebhookAdapter
+from discord_webhook import DiscordWebhook
+from dotenv import load_dotenv
+load_dotenv()
 
 DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
 MODEL_PATH = 'sp500_lstm.pth'
 
 SEQUENCE_LENGTH = 20
 FEATURE_COLUMNS = ['Close', 'High', 'Low', 'Open', 'Volume', 'Return']
+
+class SP500LSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, output_size):
+        super(SP500LSTM, self).__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+    
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        out = out[:, -1, :]  
+        out = self.fc(out)
+        return out
 
 def download_data():
     ticker = '^GSPC'
@@ -36,7 +51,9 @@ def load_scaler(path='scaler.npy'):
     return scaler
 
 def load_model(path=MODEL_PATH):
-    model = torch.load(path)
+    model = SP500LSTM(input_size=6, hidden_size=64, num_layers=2, output_size=2)
+    state_dict = torch.load(path)
+    model.load_state_dict(state_dict)
     model.eval()
     return model
 
@@ -44,10 +61,11 @@ def send_discord_message(direction, confidence):
     if not DISCORD_WEBHOOK_URL:
         print("Discord webhook URL not set")
         return
-    webhook = Webhook.from_url(DISCORD_WEBHOOK_URL, adapter=RequestsWebhookAdapter())
     emoji = "📈" if direction == "Up" else "📉"
     message = f'Daily S&P 500 Signal\nDirection: {emoji} {"Up" if direction == 1 else "Down"}\nConfidence: {confidence*100:.2f}%'
-    webhook.send(message)
+
+    webhook = DiscordWebhook(url=DISCORD_WEBHOOK_URL, content=message)
+    response = webhook.execute() 
 
 def main():
     df = download_data()
