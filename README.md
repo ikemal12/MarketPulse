@@ -15,9 +15,9 @@ MarketPulse is a Discord bot that provides real-time stock market signals, news,
 - SPY (S&P 500 ETF)  
 - AAPL (Apple Inc.)  
 - TSLA (Tesla Inc.)  
-- GOLD (Gold Spot Price)  
-- SILVER (Silver Spot Price)  
-- OIL (Crude Oil Price)
+- GLD (Gold Spot Price)  
+- SLV (Silver Spot Price)  
+- USO (Crude Oil Price)
 
 ## Tech Stack
 
