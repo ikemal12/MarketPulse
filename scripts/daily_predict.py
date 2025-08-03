@@ -7,6 +7,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from discord_webhook import DiscordWebhook
 from dotenv import load_dotenv
+from model import SP500LSTM
 load_dotenv()
 
 TICKER = 'SPY'
@@ -16,18 +17,6 @@ SCALER_PATH = os.path.join('scalers', f'{TICKER}.npy')
 
 SEQUENCE_LENGTH = 20
 FEATURE_COLUMNS = ['Close', 'High', 'Low', 'Open', 'Volume', 'Return', 'RSI', 'MACD']
-
-class SP500LSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, output_size):
-        super(SP500LSTM, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
-    
-    def forward(self, x):
-        out, _ = self.lstm(x)
-        out = out[:, -1, :]
-        out = self.fc(out)
-        return out
 
 def compute_technical_indicators(df):
     delta = df['Close'].diff()
