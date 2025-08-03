@@ -34,6 +34,8 @@ def compute_technical_indicators(df):
 
 def download_data(ticker):
     df = yf.download(ticker, period='40d', interval='1d')
+    if df is None or df.empty:
+        raise ValueError(f"Failed to download data for {ticker}")
     df['Return'] = df['Close'].pct_change()
     df = compute_technical_indicators(df)
     df.dropna(inplace=True)

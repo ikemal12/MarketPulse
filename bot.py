@@ -7,6 +7,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 from newsapi import NewsApiClient
 from scripts.model import SP500LSTM
+from typing import cast
 from datetime import datetime, timezone
 import matplotlib.pyplot as plt
 import tempfile
@@ -16,13 +17,20 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = os.getenv('DISCORD_GUILD_ID')
 NEWSAPI_KEY = os.getenv('NEWSAPI_KEY')
 
+assert TOKEN is not None, "DISCORD_TOKEN environment variable is required"
+assert GUILD_ID is not None, "DISCORD_GUILD_ID environment variable is required"
+
+# Type cast to help the type checker understand these are definitely strings
+TOKEN = cast(str, TOKEN)
+GUILD_ID = cast(str, GUILD_ID)
+
 class SignalBot(discord.Client):
     def __init__(self):
         super().__init__(intents=discord.Intents.default())
         self.tree = app_commands.CommandTree(self)
 
     async def on_ready(self):
-        await self.tree.sync(guild=discord.Object(id=int(GUILD_ID)))
+        await self.tree.sync(guild=discord.Object(id=int(cast(str, GUILD_ID))))
         print(f'Logged in as {self.user}. Slash commands synced to guild.')
 
 client = SignalBot()
@@ -41,7 +49,8 @@ def get_latest_prediction(ticker: str):
         output = model(X_test[-1].unsqueeze(0))
         probs = F.softmax(output, dim=1).squeeze()
         pred = torch.argmax(probs).item()
-        return ("📈 Up" if pred else "📉 Down", probs[pred].item() * 100, None)
+        pred_idx = int(pred)
+        return ("📈 Up" if pred_idx else "📉 Down", probs[pred_idx].item() * 100, None)
     
 def get_model_stats(ticker: str):
     from os.path import exists
@@ -134,7 +143,7 @@ def fetch_news(ticker: str, api_key: str, limit: int = 5):
     return results
 
 
-@client.tree.command(name="predict", description="Get the latest signal", guild=discord.Object(id=int(GUILD_ID)))
+@client.tree.command(name="predict", description="Get the latest signal", guild=discord.Object(id=int(cast(str, GUILD_ID))))
 @app_commands.describe(ticker="Ticker like AAPL, SPY")
 async def predict(interaction: discord.Interaction, ticker: str):
     ticker = ticker.upper()
@@ -145,7 +154,7 @@ async def predict(interaction: discord.Interaction, ticker: str):
         await interaction.response.send_message(f"**{ticker} Signal**\nDirection: {direction}\nConfidence: {confidence:.2f}%")
 
 
-@client.tree.command(name="news", description="Get the latest financial news for a ticker", guild=discord.Object(id=int(GUILD_ID)))
+@client.tree.command(name="news", description="Get the latest financial news for a ticker", guild=discord.Object(id=int(cast(str, GUILD_ID))))
 @app_commands.describe(ticker="Ticker like AAPL, TSLA")
 async def news(interaction: discord.Interaction, ticker: str):
     if not NEWSAPI_KEY:
@@ -159,13 +168,13 @@ async def news(interaction: discord.Interaction, ticker: str):
 
     await interaction.response.send_message(f"**Latest News for {ticker.upper()}:**\n" + "\n".join(articles))
 
-@client.tree.command(name="stats", description="Get model accuracy for a ticker", guild=discord.Object(id=int(GUILD_ID)))
+@client.tree.command(name="stats", description="Get model accuracy for a ticker", guild=discord.Object(id=int(cast(str, GUILD_ID))))
 @app_commands.describe(ticker="Ticker like AAPL, SPY")
 async def stats(interaction: discord.Interaction, ticker: str):
     ticker = ticker.upper()
     stats_data, error = get_model_stats(ticker)
-    if error:
-        await interaction.response.send_message(f"⚠️ {error}", ephemeral=True)
+    if error or not stats_data:
+        await interaction.response.send_message(f"⚠️ {error or 'No stats available'}", ephemeral=True)
         return
 
     await interaction.response.send_message(
@@ -177,18 +186,18 @@ async def stats(interaction: discord.Interaction, ticker: str):
         f"{stats_data['avg_conf']*100:.2f}% / {stats_data['min_conf']*100:.2f}% / {stats_data['max_conf']*100:.2f}%"
     )
 
-@client.tree.command(name="plot", description="Visualise predictions vs. actual values", guild=discord.Object(id=int(GUILD_ID)))
+@client.tree.command(name="plot", description="Visualise predictions vs. actual values", guild=discord.Object(id=int(cast(str, GUILD_ID))))
 @app_commands.describe(ticker="Ticker like AAPL, SPY")
 async def plot(interaction: discord.Interaction, ticker: str):
     await interaction.response.defer() 
     ticker = ticker.upper()
     plot_path, error = generate_prediction_plot(ticker)
-    if error:
-        await interaction.followup.send(f"⚠️ {error}")
+    if error or not plot_path:
+        await interaction.followup.send(f"⚠️ {error or 'Failed to generate plot'}")
         return
 
     file = discord.File(plot_path, filename=f"{ticker}_plot.png")
     await interaction.followup.send(content=f"📊 Prediction vs Actual for {ticker}:", file=file)
 
 
-client.run(TOKEN)
+client.run(cast(str, TOKEN))
